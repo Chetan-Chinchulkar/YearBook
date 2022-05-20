@@ -3,7 +3,7 @@ from django.shortcuts import render
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse, HttpResponseBadRequest
 from django.urls import reverse
 from django.contrib.auth.models import User
-from .models import Testimonial, PollAnswer, PollQuestion, ProfileAnswers, ProfileQuestion, Profile, Announcement, Leaderboard
+from .models import Testimonial, PollAnswer, PollQuestion, ProfileAnswers, ProfileQuestion, Profile, Announcement, Leaderboard, Team_Member
 from django.db.models.functions import Length, Lower
 from PIL import Image, ImageOps
 import os
@@ -11,22 +11,73 @@ import re
 from yearbook.settings import BASE_DIR, MEDIA_ROOT, POLL_STOP, PORTAL_STOP, PRODUCTION
 import collections
 from datetime import timedelta
+from functools import wraps
+from django.contrib import messages
 
 # Create your views here.
 
 profile_pic_upload_folder = os.path.join(MEDIA_ROOT, Profile.profile_pic.field.upload_to)
 
+def remove_emoji(string):
+    emoji_pattern = re.compile("["
+                               u"\U0001F600-\U0001F64F"  # emoticons
+                               u"\U0001F300-\U0001F5FF"  # symbols & pictographs
+                               u"\U0001F680-\U0001F6FF"  # transport & map symbols
+                               u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
+                               u"\U00002500-\U00002BEF"  # chinese char
+                               u"\U00002702-\U000027B0"
+                               u"\U00002702-\U000027B0"
+                               u"\U000024C2-\U0001F251"
+                               u"\U0001f926-\U0001f937"
+                               u"\U00010000-\U0010ffff"
+                               u"\u2640-\u2642"
+                               u"\u2600-\u2B55"
+                               u"\u200d"
+                               u"\u23cf"
+                               u"\u23e9"
+                               u"\u231a"
+                               u"\ufe0f"  # dingbats
+                               u"\u3030"
+                               "]+", flags=re.UNICODE)
+    # print("Emojis Removed :)")
+    return emoji_pattern.sub(r'', string)
 
 def votes_sort_key(item):
     return len(item[1])
 
-
 def nominees_sort_key(item):
     return item.full_name
 
+def is_edited(func ):
+    @wraps(func)
+    def wrapper(request,  *args, **kwargs):
+        user = User.objects.filter(username=request.user.username).first()
+        profile = Profile.objects.filter(user=user).first()
+        if user.is_superuser:
+                return func(request,  *args, **kwargs)
+        if profile.gmailid == "" or profile.address == "" or len(profile.phoneno) != 10 :
+            messages.warning(request, "Please update all the required profile fields (i.e., phone number, address and gmail id) to continue!" )
+            errors = [0, 0]
+            context = {
+                'updated': False,
+                'user': user,
+                'profile': profile,
+                'errors': errors,
+                'logged_in': True
+            }
+            return render(request, 'editprofile.html', context)
+            # return render(request, 'editprofile.html')
+        else :
+            return func(request,  *args, **kwargs)
+    
+    return wrapper
+        
+
 
 @login_required
+@is_edited
 def home(request):
+    # print("hii")
     if request.method == 'GET':
         if request.user and not request.user.is_anonymous:
             logged_in = True
@@ -89,7 +140,9 @@ def home(request):
 
 
 @login_required
+@is_edited
 def profile(request, username):
+    
     if request.method == 'GET':
         if request.user and not request.user.is_anonymous:
             user = User.objects.filter(username=request.user.username).first()
@@ -166,7 +219,9 @@ def profile(request, username):
 
 
 @login_required
+@is_edited
 def search(request):
+    print("hiisasaa")
     if request.method == 'GET':
         if request.user and not request.user.is_anonymous:
             user = User.objects.filter(username=request.user.username).first()
@@ -217,7 +272,17 @@ def search(request):
 
 def login(request):
     if request.method == 'GET':
-        if request.user and not request.user.is_anonymous:
+        # profile = Profile.objects.filter(user=user).first()
+        # if profile.gmailid == "":
+        #     user = User.objects.filter(username=request.user.username).first()
+        #     context = {
+        #         'logged_in': True,
+        #         'user': user,
+        #         'production': PRODUCTION
+        #     }
+        #     return render(request, 'editprofile.html', context)
+
+        if request.user and not request.user.is_anonymous :
             user = User.objects.filter(username=request.user.username).first()
             context = {
                 'logged_in': True,
@@ -238,6 +303,7 @@ def login(request):
 
 
 @login_required
+
 def edit_profile(request):
     if request.method == 'GET':
         user = User.objects.filter(username=request.user.username).first()
@@ -258,18 +324,34 @@ def edit_profile(request):
             user = User.objects.filter(username=request.user.username).first()
             profile = Profile.objects.filter(user=user).first()
             new_name = request.POST.get("name", "")
-            errors = [0, 0]
+            errors = [0, 0, 0,0,0]
             if user.is_superuser:
                 return error404(request)
-            if len(new_name) < 50 and new_name != "":
+            if len(new_name) < 50 and new_name != "" and new_name.isdigit()==False:
                 profile.full_name = new_name
             else:
                 errors[0] = 1
             new_bio = request.POST.get("bio", "")
+            new_bio = remove_emoji(new_bio)
             if len(new_bio) <= 500:
                 profile.bio = new_bio
             else:
                 errors[1] = 1
+            new_mailid = request.POST.get("mailid", "")
+            if len(new_mailid) <= 60:
+                profile.gmailid = new_mailid
+            else:
+                errors[2] = 1
+            new_address = request.POST.get("address", "")
+            if len(new_address) <= 500:
+                profile.address = new_address
+            else:
+                errors[3] = 1
+            new_phoneno = request.POST.get("phoneno", "")
+            if len(new_phoneno) == 10:
+                profile.phoneno = new_phoneno
+            else:
+                errors[4] = 1
             profile.save()
             context = {
                 'updated': True,
@@ -277,7 +359,7 @@ def edit_profile(request):
                 'errors': errors,
                 'logged_in': True
             }
-            if errors[0] + errors[1] == 0:
+            if errors[0] + errors[1] + errors[2] + errors[3] + errors[4] == 0:
                 return render(request, 'editprofile.html', context)
             else:
                 context['updated'] = False
@@ -342,6 +424,7 @@ def upload_profile_pic(request):
 
 
 @login_required
+@is_edited
 def add_testimonial(request, username):
     if request.method == 'GET':
         return error404(request)
@@ -358,6 +441,7 @@ def add_testimonial(request, username):
                     return JsonResponse(
                         {'status': 0, 'error': "You can't write a testimonial for non-graduating batch"})
                 content = request.POST.get("content", "")
+                content = remove_emoji(content)
                 if len(content) <= 400 and content != "":
                     old_testimonial = Testimonial.objects.filter(given_to=given_to_profile,
                                                                  given_by=given_by_profile).first()
@@ -379,6 +463,7 @@ def add_testimonial(request, username):
 
 
 @login_required
+@is_edited
 def delete_testimonial(request):
     if request.method == 'GET':
         return error404(request)
@@ -402,6 +487,7 @@ def delete_testimonial(request):
 
 
 @login_required
+@is_edited
 def favourite_testimonial(request):
     if request.method == 'GET':
         return error404(request)
@@ -435,6 +521,7 @@ def favourite_testimonial(request):
 
 
 @login_required
+@is_edited
 def change_answer(request, username):
     if request.method == 'GET':
         return error404(request)
@@ -475,6 +562,7 @@ def change_answer(request, username):
 
 
 @login_required
+@is_edited
 def add_vote(request):
     if request.method == 'GET':
         return error404(request)
@@ -523,6 +611,7 @@ def error404(request):
 
 
 @login_required
+@is_edited
 def polls(request):
     if request.method == 'GET':
         if request.user and not request.user.is_anonymous:
@@ -586,6 +675,7 @@ def polls(request):
 
 
 @login_required
+@is_edited
 def write_testimonial(request):
     if request.method == 'GET':
         if request.user and not request.user.is_anonymous:
@@ -618,21 +708,27 @@ def team(request):
             logged_in = False
         if logged_in:
             user = User.objects.filter(username=request.user.username).first()
+            members = Team_Member.objects.all().order_by('position')
             context = {
                 'user': user,
-                'logged_in': logged_in
+                'logged_in': logged_in,
+                'team_members': members
             }
-            return render(request, 'team.html', context)
+            print(members)
+            return render(request, 'team_mem.html', context)
         else:
+            members = Team_Member.objects.all().order_by('position')
             context = {
-                'logged_in': logged_in
+                'logged_in': logged_in,
+                'team_members': members
             }
-            return render(request, 'team.html', context)
+            return render(request, 'team_mem.html', context)
     else:
         return error404(request)
 
 
 @login_required
+@is_edited
 def leaderboard(request):
     if request.method == 'GET':
         if request.user and not request.user.is_anonymous:
@@ -672,6 +768,7 @@ def leaderboard(request):
 
 
 @login_required
+@is_edited
 def update_leaderboard(request):
     if request.method == 'GET':
         if request.user and not request.user.is_anonymous:
@@ -719,6 +816,7 @@ def update_leaderboard(request):
 
 
 @login_required
+@is_edited
 def auto_mark_favs(request):
     if request.method == 'GET':
         if request.user and not request.user.is_anonymous:

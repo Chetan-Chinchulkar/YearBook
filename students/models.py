@@ -2,8 +2,22 @@ from django.db import models
 from django.contrib.postgres.fields import ArrayField
 from django.contrib.auth.models import User
 from django.utils import timezone
+from phonenumber_field.modelfields import PhoneNumberField
+from django.core.exceptions import ValidationError
+import uuid
 # Create your models here.
+def only_int(value): 
+    if (value.isdigit()==True and len(value) == 10) or len(value) ==0 :
+        return value
+    else:
+        raise ValidationError('Phone number should contain only numbers')
 
+def int_name(value): 
+    print("hiii")
+    if (value.isdigit()==True and len(value) == 10) or len(value) ==0 :
+        raise ValidationError('Name should not contain phone number')
+    else:
+        return value
 
 class Profile(models.Model):
     btech = '01'
@@ -37,28 +51,32 @@ class Profile(models.Model):
     cl = '07'
     cst = '22'
     eee = '08'
-    ma = '23'
+    mnc = '23'
     ph = '21'
-    rt = '54'
     hss = '41'
     enc = '51'
     env = '52'
     nt = '53'
+    crt = '54'
     lst = '55'
+    ds = '61'
+    emob = '63'
 
     department_values = (
         (cse, 'Computer Science & Engineering'),
         (ece, 'Electronics & Communication Engineering'),
         (me, 'Mechanical Engineering'),
         (ce, 'Civil Engineering'),
+        (crt, 'Centre for Rural Technology'),
         (dd, 'Design'),
+        (ds, 'Data Science'),
+        (emob, 'E-Mobility'),
         (bsbe, 'Biosciences & Bioengineering'),
         (cl, 'Chemical Engineering'),
         (cst, 'Chemical Science & Technology'),
         (eee, 'Electronics & Electrical Engineering'),
-        (ma, 'Mathematics & Computing'),
+        (mnc, 'Mathematics & Computing'),
         (ph, 'Engineering Physics'),
-        (rt, 'Rural Technology'),
         (hss, 'Humanities & Social Sciences'),
         (enc, 'Centre for Energy'),
         (env, 'Centre for Environment'),
@@ -68,16 +86,28 @@ class Profile(models.Model):
     )
     profile_pic = models.ImageField(upload_to='profile_pics/', default='profile_pics/no-profile-pic.png')
     user = models.ForeignKey(User, on_delete=models.CASCADE)
-    full_name = models.CharField(max_length=100)
+    full_name = models.CharField(validators=[int_name], max_length=100)
     rollno = models.IntegerField()
     program = models.CharField(max_length=2, choices=program_values)
     department = models.CharField(max_length=3, choices=department_values)
     bio = models.TextField(max_length=500)
     graduating = models.BooleanField(default=False)
+    address = models.CharField(max_length=500, default="")
+    gmailid = models.CharField(default="", max_length=60)
+    phoneno = models.CharField(validators=[only_int], max_length=10, default="")
 
     def __str__(self):
         return self.full_name
 
+class Team_Member(models.Model):
+    name = models.CharField(max_length=100, null=False)
+    linkedin = models.URLField(max_length=200)
+    profile_pic = models.ImageField(upload_to='team/', default='team/no-profile-pic.png')
+    position = models.CharField(max_length=100, null=False)
+
+    def __str__(self):
+        return self.name+" "+self.position
+    
 
 class Testimonial(models.Model):
     favourite = models.BooleanField(default=False)
@@ -159,4 +189,4 @@ class Leaderboard(models.Model):
     cnt_6 = models.IntegerField(default=0)
     cnt_7 = models.IntegerField(default=0)
     cnt_8 = models.IntegerField(default=0)
-    cnt_9 = models.IntegerField(default=0)
+    cnt_9 = models.IntegerField(default=0)  
